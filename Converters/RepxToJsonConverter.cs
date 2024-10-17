@@ -20,12 +20,13 @@ namespace PBReportConverter.Converters
         {
             Console.WriteLine($"Converting {fileName} to .json");
             Console.Write("Is this a subreport (hide from overviews)? (Y/N)");
-            bool isSubreport = Console.ReadKey(true).Key == ConsoleKey.Y;
+            var k = Console.ReadKey(true).Key;
+            bool isSubreport = k == ConsoleKey.Y || k == ConsoleKey.Enter;
             Console.WriteLine(isSubreport ? "- Yes" : "- No");
 
             Console.WriteLine($"Enter the category, or press Y to use '{Category}'");
             var firstLetter = Console.ReadKey(true).Key;
-            if (firstLetter == ConsoleKey.Y)
+            if (firstLetter == ConsoleKey.Y || firstLetter == ConsoleKey.Enter)
             {
                 Console.WriteLine(Category);
             }
@@ -106,7 +107,7 @@ namespace PBReportConverter.Converters
                         Description = reportDisplayName,
                         Layout = layout.Replace(Environment.NewLine, "\r\n").Replace("\"", "\\\""),
                         QueryConfiguration_LobstaQueryConfigurationId = (string?)null,
-                        PermissionTypes = new string[0],
+                        PermissionTypes = "[]",
                         Category,
                         VariationId = (string?)null,
                     },
@@ -164,8 +165,32 @@ namespace PBReportConverter.Converters
 
         private Dictionary<string, string> _commonNameAbbreviations = new()
         {
-            {"stmt", "Statement"},
-            {"smmry", "Summary"}
+            {"stmt", "Statement"}, 
+            {"pop", "Percent of Proceeds"},
+            {"wlhd", "Wellhead"},
+            {"ga", "Gas Analysis"},
+            {"pmnt", "Payment"},
+            {"plt", "Plant"},
+            {"no_plt", "PVR"},
+            {"k", "Contract"},
+            {"stndrd", "Standard"},
+            {"smmry", "Summary"},
+            {"smry", "Summary"},
+            {"reserv", "Reservation"},
+            {"multiprod", "Multiple Product Or Multi Product"},
+            {"imb", "Imbalance"},
+            {"sat", "Saturation"},
+            {"oba", "OBA"},
+            {"hub", "Hub"},
+            {"shp", "Shipper"},
+            {"hdr", "Header"},
+            {"dtl", "Detail"},
+            {"csh", "Cash Out"},
+            {"fxd", "Fixed"},
+            {"bilat", "Bilateral"},
+            {"trn", "Transport"},
+            {"pur", "Purchase"},
+            {"sls", "Sales"}
         };
         internal string FileNameToDisplayName(string name)
         {
