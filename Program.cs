@@ -1,4 +1,5 @@
-﻿using PBReportConverter.Converters;
+﻿using Newtonsoft.Json;
+using PBReportConverter.Converters;
 using static PBReportConverter.Converters.PblToSrdConverter;
 
 Console.WriteLine("Enter path of directory with .pbl, .srd or .repx files");
@@ -61,12 +62,13 @@ else if (repxFiles.Length != 0)
     {
         repxInfo.Create();
     }
-    var repxToJsonConverter = new RepxToJsonConverter(inputPath!, outputPath!);
-    foreach (var fileName in repxFiles)
-    {
-        var relativePath = Path.GetRelativePath(inputPath!, fileName);
-        repxToJsonConverter.ConvertToJson(relativePath);
-    }
+
+    //there is a json file RepxToJsonConverter.json with the category of the last converted file
+    //deserialize it to an RepxToJsonConverterConfig instance
+
+    var config = JsonConvert.DeserializeObject<RepxToJsonConverterConfig>(File.ReadAllText("RepxToJsonConverter.config.json"));
+    var repxToJsonConverter = new RepxToJsonConverter(inputPath!, outputPath!, config!);
+    repxToJsonConverter.ConvertToJson(repxFiles);
     Console.WriteLine($"Converted {repxFiles.Length} repx files to json");
 }
 Console.ReadKey(true);

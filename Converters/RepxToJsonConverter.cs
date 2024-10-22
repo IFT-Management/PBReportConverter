@@ -1,7 +1,9 @@
 ﻿using DevExpress.XtraReports.UI;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -9,62 +11,113 @@ using System.Threading.Tasks;
 
 namespace PBReportConverter.Converters
 {
-    class RepxToJsonConverter(string inputDir, string outputDir)
+    class RepxToJsonConverter(string inputDir, string outputDir, RepxToJsonConverterConfig config)
     {
+        private class FileToConvert(string fileName, string path, string category)
+        {
+            public string FileName { get; } = fileName;
+            public string Path { get; } = path;
+            public string Category { get; set; } = category;
+            public bool Processed { get; set; } = false;
+
+            public override string ToString()
+            {
+                return $"{(Processed ? "(X)" : "( )")} {FileName}";
+            }
+        }
+
         private readonly string _inputDir = inputDir;
         private readonly string _outputDir = outputDir;
+        private readonly Dictionary<string, string[]> _mainReports = config.MainReports;
 
-        public string Category { get; set; } = "Unknown";
 
-        internal void ConvertToJson(string fileName)
+
+        internal void ConvertToJson(IEnumerable<string> files)
         {
-            Console.WriteLine($"Converting {fileName} to .json");
-            Console.Write("Is this a subreport (hide from overviews)? (Y/N)");
-            var k = Console.ReadKey(true).Key;
-            bool isSubreport = k == ConsoleKey.Y || k == ConsoleKey.Enter;
-            Console.WriteLine(isSubreport ? "- Yes" : "- No");
-
-            Console.WriteLine($"Enter the category, or press Y to use '{Category}'");
-            var firstLetter = Console.ReadKey(true).Key;
-            if (firstLetter == ConsoleKey.Y || firstLetter == ConsoleKey.Enter)
+            var allFiles = files.Select(path =>
             {
-                Console.WriteLine(Category);
-            }
-            else
+                var fileName = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
+                var category = _mainReports.FirstOrDefault(x => x.Value.Contains(fileName)).Key;
+                return new FileToConvert(fileName, path, category);
+            }).ToArray();
+
+            var mainReports = allFiles.Where(f => f.Category != null).ToList();
+
+            foreach (var mainReport in mainReports)
             {
-                Console.Write(firstLetter);
-                Category = firstLetter + Console.ReadLine();
+                var directSubreports = ConvertToJson(mainReport.Path, mainReport.Category, isSubreport: false);
+                foreach (var subreport in directSubreports)
+                {
+                    var subreportFile = allFiles.FirstOrDefault(f => f.FileName == subreport);
+                    if (subreportFile != null)
+                    {
+                        if(string.IsNullOrEmpty(subreportFile.Category))
+                            subreportFile.Category = mainReport.Category;
+                    }
+                    else
+                    { 
+                        Console.WriteLine($"Report {mainReport.FileName} depends on subreport {subreport} but the .repx file for this subreport wasn't found");
+                    }
+                }
+                mainReport.Processed = true;
+            }
+            var cnt = 0;
+            while (cnt < 25)
+            {
+                var queue = allFiles.Where(c => !c.Processed && !string.IsNullOrEmpty(c.Category)).ToArray();
+                if (queue.Length == 0)
+                {
+                    break;
+                }
+                foreach (var current in queue)
+                {
+                    var directSubreports = ConvertToJson(current.Path, current.Category, isSubreport: true);
+                    foreach (var subreport in directSubreports)
+                    {
+                        var subreportFile = allFiles.FirstOrDefault(f => f.FileName == subreport);
+                        if (subreportFile != null)
+                        {
+                            if (string.IsNullOrEmpty(subreportFile.Category))
+                                subreportFile.Category = current.Category;
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Report {current.Path} depends on subreport {subreport} but the .repx file for this subreport wasn't found");
+                        }
+                    }
+                    current.Processed = true;
+                }
             }
 
-            Console.Write("Processing...");
+            foreach (var f in allFiles.Where(f => !f.Processed))
+            {
+                Console.WriteLine($"Report {f.Path} wasn't processed, it isn't a known report or used as a subreport");
+            }
+        }
 
-            var inputPath = Path.Combine(_inputDir, fileName);
-            var extensionIndex = fileName.LastIndexOf('.');
-            var outputPath = Path.Combine(_outputDir, $"{fileName[..extensionIndex]}.json");
-            var srdName = Path.GetFileNameWithoutExtension(inputPath);
+
+        private IEnumerable<string> ConvertToJson(string path, string category, bool isSubreport)
+        {
+            List<string> subreportNames = new();
+
+            var fileName = Path.GetFileNameWithoutExtension(path);
+            Console.Write($"Converting {category} {(isSubreport ? "subreport" : "master report")} {fileName}.repx to .json");
+
+            var outputPath = Path.Combine(_outputDir, $"{fileName}.json");
             try
             {
-                if (File.Exists(outputPath))
-                {
-                    File.Delete(outputPath);
-                }
-                else
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
-                }
+                Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
 
                 XtraReport report = new XtraReport();
-                report.LoadLayoutFromXml(inputPath);
+                report.LoadLayoutFromXml(path);
 
-                var reportId = FileNameToGuid(srdName).ToString();
-                string reportDisplayName = FileNameToDisplayName(srdName);
+                var reportId = FileNameToGuid(fileName).ToString();
+                string reportDisplayName = FileNameToDisplayName(fileName);
                 if (isSubreport)
                 {
                     report.Name = reportDisplayName = $"Subreport: {reportDisplayName}";
                 }
                 report.Name = reportDisplayName;
-
-
 
                 List<string> subreportIds = new();
                 var subReports = report.AllControls<XRSubreport>().ToArray();
@@ -74,11 +127,12 @@ namespace PBReportConverter.Converters
                     {
                         throw new InvalidOperationException($"The subreport '{subReport.Name}' configuration on master '{report.Name}' is not supported");
                     }
-                    var name = subReport.ReportSource.Name;
+                    var name = string.IsNullOrEmpty(subReport.ReportSource.Name) ? subReport.Name : subReport.ReportSource.Name;
                     if (string.IsNullOrEmpty(name))
                     {
                         throw new InvalidOperationException($"The subreport '{subReport.Name}' configuration on master '{report.Name}' is not supported, it is missing the Name attribute");
                     }
+                    subreportNames.Add(name);
                     subReport.ReportSourceUrl = FileNameToGuid(name).ToString();
                     subreportIds.Add(subReport.ReportSourceUrl);
                 }
@@ -98,7 +152,7 @@ namespace PBReportConverter.Converters
                     },
                     DisplayName = reportDisplayName,
                     Description = reportDisplayName,
-                    Category,
+                    category,
                     Icon = "fa fa-print",
                     Data = new
                     {
@@ -107,8 +161,8 @@ namespace PBReportConverter.Converters
                         Description = reportDisplayName,
                         Layout = layout,
                         QueryConfiguration_LobstaQueryConfigurationId = (string?)null,
-                        PermissionTypes = "[]",
-                        Category,
+                        PermissionsTypes = "[]",
+                        category,
                         VariationId = (string?)null,
                     },
                     Filter = new
@@ -120,32 +174,41 @@ namespace PBReportConverter.Converters
                     },
                     Dependencies = subreportIds.Select(sId => new
                     {
-
                         Id = sId,
                         ResourceType = "ReportConfiguration"
-                    }).ToArray(),
+                    }).OrderBy(sId => sId.Id).ToArray(),
                     Version = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss.fffffffzzz"),
                     ParameterRequirements = new string[0],
                     IsPinned = !isSubreport,
                     CanPin = true
                 };
 
+
+                if (File.Exists(outputPath))
+                {
+                    var existingJson = JsonConvert.DeserializeObject<JObject>(File.ReadAllText(outputPath));
+                    //find the layout
+                    var existingLayout = existingJson!["Data"]!["Layout"]!.Value<string>();
+                    if (layout == existingLayout)
+                    {
+                        Console.Write(" - Skipped, layout unchanged \n");
+                        return subreportNames;
+                    }
+                }
                 File.WriteAllText(outputPath, JsonConvert.SerializeObject(json, Newtonsoft.Json.Formatting.Indented));
 
                 Console.Write(" - Done\n");
             }
             catch (Exception e)
             {
-                Console.WriteLine($" - Failed\n\t{e.Message}");
+                Console.Write($" - Failed\n\t{e.Message}");
                 if (File.Exists(outputPath))
                 {
                     File.Delete(outputPath);
                 }
             }
+            return subreportNames;
         }
-
-
-
 
         private Dictionary<string, Guid> _fileNameToGuidCache = new();
         internal Guid FileNameToGuid(string name)
@@ -165,7 +228,7 @@ namespace PBReportConverter.Converters
 
         private Dictionary<string, string> _commonNameAbbreviations = new()
         {
-            {"stmt", "Statement"}, 
+            {"stmt", "Statement"},
             {"pop", "Percent of Proceeds"},
             {"wlhd", "Wellhead"},
             {"ga", "Gas Analysis"},
@@ -216,5 +279,12 @@ namespace PBReportConverter.Converters
             }
             return sb.ToString().Trim();
         }
+    }
+
+
+
+    class RepxToJsonConverterConfig
+    {
+        public Dictionary<string, string[]> MainReports { get; set; }
     }
 }

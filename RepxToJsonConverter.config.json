@@ -1,0 +1,32 @@
+{
+    "mainReports": {
+        "Accounting": [
+            "d_invoice_anadarko",
+            "d_invoice_anadarko",
+            "d_invoice_ngl",
+            "rpt_pmnt_statement_no_plt_driver",
+            "rpt_pmnt_statement_multiprod_driver",
+            "rpt_pmnt_statement_driver",
+            "rpt_pmnt_statement_plt_driver",
+            "rpt_move_invoice_hub_drv",
+            "rpt_move_invoice_sat_imb_drv",
+            "rpt_move_invoice_sat_drv",
+            "rpt_move_invoice_oba_drv",
+            "rpt_move_invoice_storage_drv",
+            "rpt_move_invoice_pathed_drv",
+            "rpt_move_invoice_pathed_drv_just_header",
+            "rpt_move_invoice_service_drv",
+            "d_move_invoice_stmnt_shp_dvr2"
+        ],
+        "PlantProcessing": [
+            "rpt_pmnt_statement_plt_stndrd_stmt",
+            "d_pop_stmt"
+        ],
+        "Contracts": [
+            "d_contract_brief_bilat",
+            "d_contract_brief_trn",
+            "d_contract_brief_pur",
+            "d_contract_brief_sls"
+        ]
+    }
+}
